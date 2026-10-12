@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Roadside Gems</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e4572e'/%3E%3Cpath d='M32 12l18 18-18 22-18-22z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"><link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
@@ -28,6 +29,7 @@ li b{font-size:1rem;font-weight:600}.tag{display:inline-block;background:#f1f2f4
 #sheet img{width:100%;max-height:220px;object-fit:cover;border-radius:12px;display:block;margin:12px 0}#sheet p{line-height:1.55;color:#374151}.row{margin:8px 0;font-size:.92rem}.links{display:grid;grid-template-columns:1fr 1fr;gap:8px}.links a{background:#f6f7f9;border-radius:10px;padding:10px;text-align:center;color:var(--text);font-size:.85rem}.links a:hover{background:#eceef1}
 footer{padding:8px 16px;text-align:center;font-size:.7rem;color:var(--muted);background:var(--bg)}footer a{font-size:.7rem}
 #map{flex:1;min-height:300px;margin:0 16px 12px;border-radius:var(--r);box-shadow:var(--sh)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}@keyframes sp{to{transform:rotate(360deg)}}.note{display:block;font-size:.75rem;color:#b45309}.retry{margin-left:8px;padding:5px 12px;border:0;border-radius:999px;background:var(--accent);color:#fff;font:600 .8rem inherit;cursor:pointer}
 </style></head><body>
 <header><h1>Roadside Gems</h1></header>
 <nav><button id="tN" class="on" onclick="tab('N')">Nearby</button><button id="tM" onclick="tab('M')">Map</button></nav>
@@ -49,37 +51,43 @@ function miles(a,b,c,d){const r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b),h=Math.sin(
 const QUIRK=/giant|largest|biggest|world'?s|\bbig\b|mystery|spot|wonder|oddit|museum of|dinosaur|muffler|mural|statue|twine|ball of|teapot|cowboy|bigfoot|ufo|alien|castle|carhenge|tipi|teepee|novelty|folk art|bottle|roadside/i;
 function typeOf(t){if(t.artwork_type)return 'Art: '+t.artwork_type.replace(/_/g,' ');const v=t.attraction||t.tourism||t.historic||t.man_made||t.leisure||t.amenity||t.building||'';return({attraction:'Attraction',artwork:'Roadside Art',viewpoint:'Scenic Viewpoint',museum:'Museum',monument:'Monument',memorial:'Memorial',theme_park:'Theme Park',zoo:'Zoo',aquarium:'Aquarium',castle:'Castle',ruins:'Ruins',lighthouse:'Lighthouse',windmill:'Windmill',water_tower:'Water Tower',miniature_golf:'Mini Golf',fort:'Fort',ship:'Historic Ship',locomotive:'Old Locomotive',aircraft:'Old Aircraft'})[v]||v.replace(/_/g,' ')}
 function isQuirky(t,name){return !!(t.artwork_type&&/statue|sculpture|mural|installation/.test(t.artwork_type))||t.attraction=='animal'||!!t.attraction||t.building&&QUIRK.test(name||'')||QUIRK.test(name||'')||!!t['roadside']}
+function tfetch(url,opt={},ms=15000,outer){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);if(outer)outer.addEventListener('abort',()=>c.abort());
+ return fetch(url,{...opt,signal:c.signal}).then(r=>{if(r.status!==200)throw Error('HTTP '+r.status);return r.json()}).catch(e=>{throw e.name=='AbortError'?Error('timed out'):e}).finally(()=>clearTimeout(t))}
 async function overpass(lat,lon){
- const a=`(around:${R},${lat},${lon})`,rx=`"name"~"Giant|Largest|Biggest|World's|Big |Mystery|Spot|Wonder|Oddit|Museum of|Dinosaur|Muffler|Mural|Statue|Twine",i`;
- const q=`[out:json][timeout:40];(nwr["tourism"~"^(attraction|artwork|viewpoint|museum|theme_park|zoo|aquarium)$"]${a};nwr["historic"]["name"]${a};nwr["attraction"]${a};nwr["artwork_type"]${a};nwr["man_made"]["name"]["man_made"!~"^(pipeline|tower|mast|storage_tank|silo|works|wastewater_plant|water_works|reservoir_covered|pier|bridge|survey_point|chimney|petroleum_well|water_well)$"]${a};nwr["building"][${rx}]${a};nwr["amenity"][${rx}]${a};nwr["tourism"][${rx}]${a};nwr["historic"][${rx}]${a};nwr["man_made"][${rx}]${a};nwr["leisure"="miniature_golf"]${a};);out center tags 600;`;
- let err;for(const ep of EPS){try{const r=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});if(!r.ok)throw Error('HTTP '+r.status);const j=await r.json();
-  return j.elements.map(e=>{const t=e.tags||{},n=t.name||t.description;return{name:n,type:typeOf(t),lat:e.lat??e.center?.lat,lon:e.lon??e.center?.lon,quirky:isQuirky(t,n),src:'OSM',tags:t,osm:e.type+'/'+e.id,web:t.website||t['contact:website'],wp:t.wikipedia&&t.wikipedia.startsWith('en:')?t.wikipedia.slice(3):null,qid:t.wikidata}}).filter(x=>x.name&&x.lat)}catch(e){err=e}}
- throw err}
+ const a=`(around:${R},${lat},${lon})`;
+ const q=`[out:json][timeout:20];(nw["tourism"~"^(attraction|artwork|viewpoint|museum|theme_park|zoo)$"]["name"]${a};nw["historic"~"^(monument|memorial|castle|fort|ruins|ship|locomotive|aircraft|building)$"]["name"]${a};nw["attraction"]["name"]${a};nw["name"~"Giant|Largest|Biggest|World's|Dinosaur|Muffler|Mystery|Twine",i][~"^(tourism|historic|man_made|building)$"~"."]${a};);out center tags 300;`;
+ const win=new AbortController(),body='data='+encodeURIComponent(q),hd={'Content-Type':'application/x-www-form-urlencoded'};
+ let j;try{j=await Promise.any(EPS.map(ep=>tfetch(ep,{method:'POST',body,headers:hd},15000,win.signal)))}catch(e){throw Error('all Overpass mirrors failed')}finally{win.abort()}
+ return (j.elements||[]).map(e=>{const t=e.tags||{},n=t.name||t.description;return{name:n,type:typeOf(t),lat:e.lat??e.center?.lat,lon:e.lon??e.center?.lon,quirky:isQuirky(t,n),src:'OSM',tags:t,osm:e.type+'/'+e.id,web:t.website||t['contact:website'],wp:t.wikipedia&&t.wikipedia.startsWith('en:')?t.wikipedia.slice(3):null,qid:t.wikidata}}).filter(x=>x.name&&x.lat)}
 const WD_TYPES='wd:Q14915208,wd:Q548879,wd:Q860861,wd:Q179700,wd:Q33506,wd:Q570116,wd:Q4989906,wd:Q5003624,wd:Q2319498,wd:Q1153484,wd:Q838948,wd:Q219423,wd:Q1007870',WD_QUIRK=['Q14915208','Q548879','Q860861','Q179700','Q1153484','Q219423'];
 async function wikidata(lat,lon){
  const q=`SELECT ?i ?iLabel ?c ?ty ?tyLabel ?art ?desc WHERE { SERVICE wikibase:around { ?i wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "32". } ?i wdt:P31 ?ty. ?i rdfs:label ?l. FILTER(LANG(?l)='en') OPTIONAL{?ty wdt:P279 ?sup} OPTIONAL{?art schema:about ?i; schema:isPartOf <https://en.wikipedia.org/>} OPTIONAL{?i schema:description ?desc FILTER(LANG(?desc)='en')} FILTER(?ty IN (${WD_TYPES}) || ?sup IN (wd:Q14915208,wd:Q548879,wd:Q860861,wd:Q179700,wd:Q33506,wd:Q570116) || REGEX(?l,"Giant|Largest|Biggest|World's|Mystery|Dinosaur|Muffler|Wonder|Twine|Big ","i")) SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } } LIMIT 300`;
- const r=await fetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{headers:{Accept:'application/sparql-results+json'}});if(!r.ok)throw Error('Wikidata HTTP '+r.status);const j=await r.json(),seen={};
+ const j=await tfetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{headers:{Accept:'application/sparql-results+json'}},20000),seen={};
  return j.results.bindings.map(b=>{const m=b.c.value.match(/Point\(([-\d.e]+) ([-\d.e]+)\)/),n=b.iLabel.value,qid=b.ty.value.split('/').pop();return{name:n,type:b.tyLabel.value,lat:+m[2],lon:+m[1],quirky:WD_QUIRK.includes(qid)||QUIRK.test(n),src:'Wikidata',qid:b.i.value.split('/').pop(),desc:b.desc?.value,wp:b.art?decodeURIComponent(b.art.value.split('/wiki/')[1]).replace(/_/g,' '):null}}).filter(x=>!/stream|river|creek|lake|mountain|cemetery/i.test(x.type)&&!/^Q\d+$/.test(x.name)&&!seen[x.name]&&(seen[x.name]=1))}
-async function wikipedia(lat,lon){const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=100&format=json&origin=*`);const j=await r.json();
+async function wikipedia(lat,lon){const j=await tfetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=100&format=json&origin=*`,{},15000);
  return (j.query?.geosearch||[]).filter(g=>QUIRK.test(g.title)).map(g=>({name:g.title,type:'Wikipedia landmark',lat:g.lat,lon:g.lon,quirky:true,src:'Wikipedia',wp:g.title}))}
 const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
-async function attractions(lat,lon){
- const res=await Promise.allSettled([overpass(lat,lon),wikidata(lat,lon),wikipedia(lat,lon)]),out=[],fails=[];
- res.forEach((r,i)=>{if(r.status=='fulfilled')out.push(...r.value);else fails.push(['OpenStreetMap','Wikidata','Wikipedia'][i])});
- if(fails.length==3)throw Error('all data sources unreachable');
- const merged=[];for(const x of out){x.d=miles(lat,lon,x.lat,x.lon);if(x.d>20)continue;const n=norm(x.name);
-  const dup=merged.find(y=>miles(y.lat,y.lon,x.lat,x.lon)<0.3&&(norm(y.name)==n||norm(y.name).includes(n)||n.includes(norm(y.name))));
-  if(dup){dup.quirky=dup.quirky||x.quirky;for(const k of['web','wp','qid','desc','tags','osm'])dup[k]=dup[k]||x[k];if(!dup.src.includes(x.src))dup.src+=' + '+x.src}else merged.push(x)}
- merged.sort((a,b)=>b.quirky-a.quirky||a.d-b.d);merged.sort((a,b)=>a.d-b.d);merged.fails=fails;return merged}
+// Progressive loader: returns a state whose xs array is merged in place as each source arrives
+function attractions(lat,lon,onUpdate){const st={xs:[],fails:[],pending:3},names=['OpenStreetMap','Wikidata','Wikipedia'];
+ const add=list=>{for(const x of list){x.d=miles(lat,lon,x.lat,x.lon);if(!(x.d<=20))continue;const n=norm(x.name);
+  const dup=st.xs.find(y=>miles(y.lat,y.lon,x.lat,x.lon)<0.3&&(norm(y.name)==n||norm(y.name).includes(n)||n.includes(norm(y.name))));
+  if(dup){dup.quirky=dup.quirky||x.quirky;for(const k of['web','wp','qid','desc','tags','osm'])dup[k]=dup[k]||x[k];if(!dup.src.includes(x.src))dup.src+=' + '+x.src}else st.xs.push(x)}
+  st.xs.sort((a,b)=>a.d-b.d)};
+ st.done=Promise.all([overpass,wikidata,wikipedia].map((f,i)=>f(lat,lon).then(add,e=>{console.warn(names[i],e);st.fails.push(names[i])}).finally(()=>{st.pending--;try{onUpdate&&onUpdate(st)}catch(e){console.error(e)}})));
+ return st}
+function statusHTML(st,label,noun){const v=shown(st.xs),loading=st.pending>0;
+ if(!loading&&st.fails.length==3)return `⚠️ Couldn't reach any data source. <button class="retry" onclick="retry()">Retry</button>`;
+ return `${v.length}${FILTER=='q'?' quirky':''} ${noun} within 20 mi of ${esc(label)}`+(loading?` <span class="spin"></span> loading more…`:'')+(st.fails.length?` <span class="note">${st.fails.join(', ')} unavailable · <a href="#" onclick="retry();return false">retry</a></span>`:'')}
+let RETRY=null;function retry(){RETRY&&RETRY()}
 let FILTER='all',LAST=null,MLAST=null;
 function setFilter(f){FILTER=f;document.querySelectorAll('.fb').forEach(b=>b.classList.toggle('on',b.dataset.f==f));if(LAST)renderList();if(MLAST)renderMap()}
 const shown=xs=>FILTER=='q'?xs.filter(x=>x.quirky):xs,badge=x=>x.quirky?' <span class="qb">🤪 Quirky</span>':'';
 async function geocode(q){const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));const j=await r.json();if(!j.length)throw Error('Place not found');return{lat:+j[0].lat,lon:+j[0].lon,name:j[0].display_name}}
 const dir=x=>`https://www.google.com/maps/dir/?api=1&destination=${x.lat},${x.lon}`;
-async function loadList(lat,lon,label){const s=document.getElementById('status'),l=document.getElementById('list');s.textContent='🚗 Scouting the highway near '+label+'…';l.innerHTML='';
- try{LAST={xs:await attractions(lat,lon),label,lat,lon};renderList()}catch(e){s.textContent='Could not load attractions ('+e.message+'). Try again shortly.'}}
-function renderList(){const {xs,label}=LAST,v=shown(xs),s=document.getElementById('status');s.textContent=v.length+(FILTER=='q'?' quirky':'')+' stops within 20 miles of '+label+(xs.fails.length?' (unavailable: '+xs.fails.join(', ')+')':'');
- LAST.v=v;document.getElementById('list').innerHTML=v.map((x,i)=>`<li${x.quirky?' class="q"':''}><span class="dist">${x.d.toFixed(1)} mi</span><b>${esc(x.name)}</b>${badge(x)}<br><span class="tag">${esc(x.type)}</span> <small class="src">${x.src}</small><br><a href="#" onclick="showOnMap(${i});return false">📍 Show on map</a> · <a href="#" onclick="openSheet(LAST.v[${i}]);return false">ℹ️ Details</a> · <a target="_blank" href="${dir(x)}">🧭 Directions</a></li>`).join('')||'<li>Nothing found here. Try another spot!</li>'}
+function loadList(lat,lon,label){const s=document.getElementById('status');s.innerHTML='<span class="spin"></span> Scouting near '+esc(label)+'…';document.getElementById('list').innerHTML='';
+ RETRY=()=>loadList(lat,lon,label);const st=attractions(lat,lon,st=>{renderList();if(MLAST&&MLAST.st===st)renderMap()});LAST={st,xs:st.xs,label,lat,lon}}
+function renderList(){const {xs,label,st}=LAST,v=shown(xs);document.getElementById('status').innerHTML=statusHTML(st,label,'stops');
+ LAST.v=v;document.getElementById('list').innerHTML=v.map((x,i)=>`<li${x.quirky?' class="q"':''}><span class="dist">${x.d.toFixed(1)} mi</span><b>${esc(x.name)}</b>${badge(x)}<br><span class="tag">${esc(x.type)}</span> <small class="src">${x.src}</small><br><a href="#" onclick="showOnMap(${i});return false">📍 Show on map</a> · <a href="#" onclick="openSheet(LAST.v[${i}]);return false">ℹ️ Details</a> · <a target="_blank" href="${dir(x)}">🧭 Directions</a></li>`).join('')||(LAST.st.pending?'':'<li>Nothing found here. Try another spot!</li>')}
 function locate(){const s=document.getElementById('status');if(!navigator.geolocation){s.textContent='Geolocation unsupported. Enter a place above.';return}
  s.textContent='📍 Finding you…';navigator.geolocation.getCurrentPosition(p=>loadList(p.coords.latitude,p.coords.longitude,'you'),()=>{s.textContent='Location unavailable or denied. Enter a town or address above instead.'},{enableHighAccuracy:true,timeout:15000})}
 async function nearPlace(){const v=document.getElementById('place').value.trim();if(!v)return;try{const g=await geocode(v);loadList(g.lat,g.lon,v)}catch(e){document.getElementById('status').textContent=e.message}}
@@ -90,10 +98,10 @@ let mk=null,MARK=[];
 const pin=q=>L.divIcon({className:'',html:`<div class="pin ${q?'pq':'pr'}">${q?'🤪':'★'}</div>`,iconSize:[30,30],iconAnchor:[15,30]});
 function renderMap(){if(mk)layer.removeLayer(mk);mk=L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:45,showCoverageOnHover:false}):L.layerGroup();layer.addLayer(mk);const {xs,label}=MLAST,v=shown(xs);MARK=[];
  v.forEach(x=>{const m=L.marker([x.lat,x.lon],{icon:pin(x.quirky),title:x.name}).on('click',()=>openSheet(x));m.item=x;MARK.push(m);mk.addLayer(m)});
- document.getElementById('mstatus').textContent=v.length+(FILTER=='q'?' quirky':'')+' attractions within 20 mi of '+label+' · tap a pin for details'+(xs.fails.length?' (unavailable: '+xs.fails.join(', ')+')':'')}
+ document.getElementById('mstatus').innerHTML=statusHTML(MLAST.st,label,'attractions')+(v.length?' · tap a pin':'')}
 async function mapAt(lat,lon,label,fit=true){layer.clearLayers();mk=null;L.circle([lat,lon],{radius:R,color:'#c8102e',fill:false,dashArray:'6'}).addTo(layer);
  L.circleMarker([lat,lon],{radius:8,color:'#fff',weight:3,fillColor:'#1b9aaa',fillOpacity:1}).addTo(layer).bindPopup(esc(label));if(fit)map.fitBounds(L.latLng(lat,lon).toBounds(R*2));
- document.getElementById('mstatus').textContent='Loading attractions…';MLAST={xs:await attractions(lat,lon),label,lat,lon};renderMap()}
+ document.getElementById('mstatus').innerHTML='<span class="spin"></span> Loading attractions…';RETRY=()=>mapAt(lat,lon,label,false);const st=attractions(lat,lon,st=>{if(MLAST&&MLAST.st===st)renderMap();if(LAST&&LAST.st===st)renderList()});MLAST={st,xs:st.xs,label,lat,lon}}
 let MAP_LOADED=false;
 function mapAutoLoad(){if(MAP_LOADED)return;MAP_LOADED=true;
  if(LAST&&LAST.lat!=null){mapAt(LAST.lat,LAST.lon,LAST.label).catch(e=>mErr(e));return}
@@ -102,7 +110,7 @@ function mapAutoLoad(){if(MAP_LOADED)return;MAP_LOADED=true;
  navigator.geolocation.getCurrentPosition(p=>mapAt(p.coords.latitude,p.coords.longitude,'your location').catch(mErr),()=>{document.getElementById('mstatus').textContent='Location unavailable — search a place above.'},{timeout:15000})}
 const mErr=e=>document.getElementById('mstatus').textContent='Error: '+e.message;
 async function showOnMap(i){const x=LAST.v[i];tab('M');MAP_LOADED=true;
- if(!MLAST||MLAST.xs!==LAST.xs){layer.clearLayers();MLAST={xs:LAST.xs,label:LAST.label,lat:LAST.lat,lon:LAST.lon};L.circle([LAST.lat,LAST.lon],{radius:R,color:'#c8102e',fill:false,dashArray:'6'}).addTo(layer);renderMap()}
+ if(!MLAST||MLAST.xs!==LAST.xs){layer.clearLayers();MLAST={st:LAST.st,xs:LAST.xs,label:LAST.label,lat:LAST.lat,lon:LAST.lon};L.circle([LAST.lat,LAST.lon],{radius:R,color:'#c8102e',fill:false,dashArray:'6'}).addTo(layer);renderMap()}
  setTimeout(()=>{const m=MARK.find(m=>m.item===x);if(m&&mk.zoomToShowLayer)mk.zoomToShowLayer(m,()=>{});else map.flyTo([x.lat,x.lon],16);openSheet(x)},120)}
 function addr(t){if(!t)return '';const a=[[t['addr:housenumber'],t['addr:street']].filter(Boolean).join(' '),t['addr:city']||t['addr:town']||t['addr:village'],t['addr:state'],t['addr:postcode']].filter(Boolean);return a.join(', ')}
 function town(x){const t=x.tags||{};return t['addr:city']||t['addr:town']||t['addr:village']||''}
