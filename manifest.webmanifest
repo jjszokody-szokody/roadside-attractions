@@ -1,0 +1,17 @@
+{
+  "name": "Roadside Gems",
+  "short_name": "Roadside Gems",
+  "description": "Find roadside attractions and quirky oddities within 20 miles.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#e4572e",
+  "background_color": "#f6f7f9",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
