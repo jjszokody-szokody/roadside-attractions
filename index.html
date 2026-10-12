@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roadside Oddities</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Roboto+Slab:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--red:#c8102e;--teal:#1b9aaa;--cream:#fdf3dc;--brown:#3b2414;--yellow:#f6c026}
+*{box-sizing:border-box}body{margin:0;font-family:'Roboto Slab',serif;background:var(--cream);color:var(--brown);display:flex;flex-direction:column;height:100vh}
+header{background:var(--red);color:var(--yellow);text-align:center;padding:10px;border-bottom:6px dashed var(--yellow)}
+header h1{font-family:Rye,serif;margin:0;font-size:1.7em;text-shadow:2px 2px 0 var(--brown)}header small{color:#fff}
+nav{display:flex}nav button{flex:1;padding:12px;font:700 1em Rye,serif;border:0;background:var(--teal);color:#fff;cursor:pointer}
+nav button.on{background:var(--yellow);color:var(--brown)}
+section{display:none;flex:1;overflow:auto}section.on{display:flex;flex-direction:column}
+.bar{display:flex;gap:6px;padding:10px}.bar input{flex:1;padding:10px;border:3px solid var(--brown);border-radius:8px;font:inherit}
+.bar button{padding:10px 14px;background:var(--red);color:#fff;border:3px solid var(--brown);border-radius:8px;font:700 1em inherit;cursor:pointer}
+#status,#mstatus{padding:0 12px;font-style:italic}
+ul{list-style:none;margin:0;padding:10px}li{background:#fff;border:3px solid var(--brown);border-radius:10px;padding:10px;margin-bottom:10px;box-shadow:4px 4px 0 var(--teal)}
+li b{font-size:1.1em}.tag{display:inline-block;background:var(--yellow);border-radius:4px;padding:1px 6px;font-size:.8em;margin:4px 0}
+.dist{float:right;font-family:Rye,serif;color:var(--red)}a{color:var(--teal);font-weight:700}
+.filt{background:var(--brown);color:var(--cream);padding:6px 10px;text-align:center}.fb{margin:0 4px;padding:5px 12px;border-radius:20px;border:2px solid var(--yellow);background:transparent;color:var(--yellow);font:700 .9em inherit;cursor:pointer}.fb.on{background:var(--yellow);color:var(--brown)}.qb{background:#e0218a;color:#fff;border-radius:10px;padding:1px 7px;font-size:.75em;white-space:nowrap}li.q{box-shadow:4px 4px 0 #e0218a}.src{color:#8a6a4a}
+#map{flex:1;min-height:300px}
+</style></head><body>
+<header><h1>★ Roadside Oddities ★</h1><small>Giant things, weird things &amp; worth-a-stop things within 20 miles · Data: OpenStreetMap, Wikidata, Wikipedia</small></header>
+<nav><button id="tN" class="on" onclick="tab('N')">Nearby</button><button id="tM" onclick="tab('M')">Map</button></nav>
+<div class="filt">Show: <button class="fb on" data-f="all" onclick="setFilter('all')">All</button><button class="fb" data-f="q" onclick="setFilter('q')">🤪 Quirky only</button></div>
+<section id="N" class="on">
+ <div class="bar"><input id="place" placeholder="Or enter a town / address"><button onclick="nearPlace()">Go</button><button onclick="locate()" title="Use my location">📍</button></div>
+ <div id="status"></div><ul id="list"></ul></section>
+<section id="M"><div class="bar"><input id="q" placeholder="Search anywhere…" onkeydown="if(event.key=='Enter')mapSearch()"><button onclick="mapSearch()">Search</button></div>
+ <div id="mstatus"></div><div id="map"></div></section>
+<script>
+const R=32187,EPS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+let map,layer;
+function tab(t){for(const x of['N','M']){document.getElementById(x).classList.toggle('on',x==t);document.getElementById('t'+x).classList.toggle('on',x==t)}
+ if(t=='M'){if(!map){map=L.map('map').setView([39.8,-98.6],4);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);layer=L.layerGroup().addTo(map)}setTimeout(()=>map.invalidateSize(),50)}}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function miles(a,b,c,d){const r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b),h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))}
+const QUIRK=/giant|largest|biggest|world'?s|\bbig\b|mystery|spot|wonder|oddit|museum of|dinosaur|muffler|mural|statue|twine|ball of|teapot|cowboy|bigfoot|ufo|alien|castle|carhenge|tipi|teepee|novelty|folk art|bottle|roadside/i;
+function typeOf(t){if(t.artwork_type)return 'Art: '+t.artwork_type.replace(/_/g,' ');const v=t.attraction||t.tourism||t.historic||t.man_made||t.leisure||t.amenity||t.building||'';return({attraction:'Attraction',artwork:'Roadside Art',viewpoint:'Scenic Viewpoint',museum:'Museum',monument:'Monument',memorial:'Memorial',theme_park:'Theme Park',zoo:'Zoo',aquarium:'Aquarium',castle:'Castle',ruins:'Ruins',lighthouse:'Lighthouse',windmill:'Windmill',water_tower:'Water Tower',miniature_golf:'Mini Golf',fort:'Fort',ship:'Historic Ship',locomotive:'Old Locomotive',aircraft:'Old Aircraft'})[v]||v.replace(/_/g,' ')}
+function isQuirky(t,name){return !!(t.artwork_type&&/statue|sculpture|mural|installation/.test(t.artwork_type))||t.attraction=='animal'||!!t.attraction||t.building&&QUIRK.test(name||'')||QUIRK.test(name||'')||!!t['roadside']}
+async function overpass(lat,lon){
+ const a=`(around:${R},${lat},${lon})`,rx=`"name"~"Giant|Largest|Biggest|World's|Big |Mystery|Spot|Wonder|Oddit|Museum of|Dinosaur|Muffler|Mural|Statue|Twine",i`;
+ const q=`[out:json][timeout:40];(nwr["tourism"~"^(attraction|artwork|viewpoint|museum|theme_park|zoo|aquarium)$"]${a};nwr["historic"]["name"]${a};nwr["attraction"]${a};nwr["artwork_type"]${a};nwr["man_made"]["name"]["man_made"!~"^(pipeline|tower|mast|storage_tank|silo|works|wastewater_plant|water_works|reservoir_covered|pier|bridge|survey_point|chimney|petroleum_well|water_well)$"]${a};nwr["building"][${rx}]${a};nwr["amenity"][${rx}]${a};nwr["tourism"][${rx}]${a};nwr["historic"][${rx}]${a};nwr["man_made"][${rx}]${a};nwr["leisure"="miniature_golf"]${a};);out center tags 600;`;
+ let err;for(const ep of EPS){try{const r=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});if(!r.ok)throw Error('HTTP '+r.status);const j=await r.json();
+  return j.elements.map(e=>{const t=e.tags||{},n=t.name||t.description;return{name:n,type:typeOf(t),lat:e.lat??e.center?.lat,lon:e.lon??e.center?.lon,quirky:isQuirky(t,n),src:'OSM'}}).filter(x=>x.name&&x.lat)}catch(e){err=e}}
+ throw err}
+const WD_TYPES='wd:Q14915208,wd:Q548879,wd:Q860861,wd:Q179700,wd:Q33506,wd:Q570116,wd:Q4989906,wd:Q5003624,wd:Q2319498,wd:Q1153484,wd:Q838948,wd:Q219423,wd:Q1007870',WD_QUIRK=['Q14915208','Q548879','Q860861','Q179700','Q1153484','Q219423'];
+async function wikidata(lat,lon){
+ const q=`SELECT ?i ?iLabel ?c ?ty ?tyLabel ?art WHERE { SERVICE wikibase:around { ?i wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "32". } ?i wdt:P31 ?ty. ?i rdfs:label ?l. FILTER(LANG(?l)='en') OPTIONAL{?ty wdt:P279 ?sup} OPTIONAL{?art schema:about ?i; schema:isPartOf <https://en.wikipedia.org/>} FILTER(?ty IN (${WD_TYPES}) || ?sup IN (wd:Q14915208,wd:Q548879,wd:Q860861,wd:Q179700,wd:Q33506,wd:Q570116) || REGEX(?l,"Giant|Largest|Biggest|World's|Mystery|Dinosaur|Muffler|Wonder|Twine|Big ","i")) SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } } LIMIT 300`;
+ const r=await fetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{headers:{Accept:'application/sparql-results+json'}});if(!r.ok)throw Error('Wikidata HTTP '+r.status);const j=await r.json(),seen={};
+ return j.results.bindings.map(b=>{const m=b.c.value.match(/Point\(([-\d.e]+) ([-\d.e]+)\)/),n=b.iLabel.value,qid=b.ty.value.split('/').pop();return{name:n,type:b.tyLabel.value,lat:+m[2],lon:+m[1],quirky:WD_QUIRK.includes(qid)||QUIRK.test(n),src:'Wikidata',web:b.art?.value}}).filter(x=>!/stream|river|creek|lake|mountain|cemetery/i.test(x.type)&&!/^Q\d+$/.test(x.name)&&!seen[x.name]&&(seen[x.name]=1))}
+async function wikipedia(lat,lon){const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=100&format=json&origin=*`);const j=await r.json();
+ return (j.query?.geosearch||[]).filter(g=>QUIRK.test(g.title)).map(g=>({name:g.title,type:'Wikipedia landmark',lat:g.lat,lon:g.lon,quirky:true,src:'Wikipedia',web:'https://en.wikipedia.org/wiki/'+encodeURIComponent(g.title.replace(/ /g,'_'))}))}
+const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
+async function attractions(lat,lon){
+ const res=await Promise.allSettled([overpass(lat,lon),wikidata(lat,lon),wikipedia(lat,lon)]),out=[],fails=[];
+ res.forEach((r,i)=>{if(r.status=='fulfilled')out.push(...r.value);else fails.push(['OpenStreetMap','Wikidata','Wikipedia'][i])});
+ if(fails.length==3)throw Error('all data sources unreachable');
+ const merged=[];for(const x of out){x.d=miles(lat,lon,x.lat,x.lon);if(x.d>20)continue;const n=norm(x.name);
+  const dup=merged.find(y=>miles(y.lat,y.lon,x.lat,x.lon)<0.3&&(norm(y.name)==n||norm(y.name).includes(n)||n.includes(norm(y.name))));
+  if(dup){dup.quirky=dup.quirky||x.quirky;dup.web=dup.web||x.web;if(!dup.src.includes(x.src))dup.src+=' + '+x.src}else merged.push(x)}
+ merged.sort((a,b)=>b.quirky-a.quirky||a.d-b.d);merged.sort((a,b)=>a.d-b.d);merged.fails=fails;return merged}
+let FILTER='all',LAST=null,MLAST=null;
+function setFilter(f){FILTER=f;document.querySelectorAll('.fb').forEach(b=>b.classList.toggle('on',b.dataset.f==f));if(LAST)renderList();if(MLAST)renderMap()}
+const shown=xs=>FILTER=='q'?xs.filter(x=>x.quirky):xs,badge=x=>x.quirky?' <span class="qb">🤪 Quirky</span>':'';
+async function geocode(q){const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));const j=await r.json();if(!j.length)throw Error('Place not found');return{lat:+j[0].lat,lon:+j[0].lon,name:j[0].display_name}}
+const dir=x=>`https://www.google.com/maps/dir/?api=1&destination=${x.lat},${x.lon}`;
+async function loadList(lat,lon,label){const s=document.getElementById('status'),l=document.getElementById('list');s.textContent='🚗 Scouting the highway near '+label+'…';l.innerHTML='';
+ try{LAST={xs:await attractions(lat,lon),label};renderList()}catch(e){s.textContent='Could not load attractions ('+e.message+'). Try again shortly.'}}
+function renderList(){const {xs,label}=LAST,v=shown(xs),s=document.getElementById('status');s.textContent=v.length+(FILTER=='q'?' quirky':'')+' stops within 20 miles of '+label+(xs.fails.length?' (unavailable: '+xs.fails.join(', ')+')':'');
+ document.getElementById('list').innerHTML=v.map(x=>`<li${x.quirky?' class="q"':''}><span class="dist">${x.d.toFixed(1)} mi</span><b>${esc(x.name)}</b>${badge(x)}<br><span class="tag">${esc(x.type)}</span> <small class="src">${x.src}</small><br><a target="_blank" href="${dir(x)}">🧭 Directions</a>${x.web?` · <a target="_blank" href="${esc(x.web)}">ℹ️ Info</a>`:''}</li>`).join('')||'<li>Nothing found here. Try another spot!</li>'}
+function locate(){const s=document.getElementById('status');if(!navigator.geolocation){s.textContent='Geolocation unsupported. Enter a place above.';return}
+ s.textContent='📍 Finding you…';navigator.geolocation.getCurrentPosition(p=>loadList(p.coords.latitude,p.coords.longitude,'you'),()=>{s.textContent='Location unavailable or denied. Enter a town or address above instead.'},{enableHighAccuracy:true,timeout:15000})}
+async function nearPlace(){const v=document.getElementById('place').value.trim();if(!v)return;try{const g=await geocode(v);loadList(g.lat,g.lon,v)}catch(e){document.getElementById('status').textContent=e.message}}
+document.getElementById('place').addEventListener('keydown',e=>{if(e.key=='Enter')nearPlace()});
+async function mapSearch(){const v=document.getElementById('q').value.trim(),s=document.getElementById('mstatus');if(!v)return;s.textContent='Searching…';
+ try{const g=await geocode(v);layer.clearLayers();mk=L.layerGroup();L.circle([g.lat,g.lon],{radius:R,color:'#c8102e',fill:false,dashArray:'6'}).addTo(layer);L.marker([g.lat,g.lon]).addTo(layer).bindPopup('<b>'+esc(g.name)+'</b>');map.fitBounds(L.latLng(g.lat,g.lon).toBounds(R*2));
+  s.textContent='Loading attractions…';MLAST={xs:await attractions(g.lat,g.lon),label:v};renderMap()}catch(e){s.textContent='Error: '+e.message}}
+let mk=L.layerGroup();
+function renderMap(){mk.clearLayers();mk.addTo(layer);const {xs,label}=MLAST,v=shown(xs);
+ v.forEach(x=>L.circleMarker([x.lat,x.lon],{radius:x.quirky?9:6,color:'#3b2414',fillColor:x.quirky?'#e0218a':'#f6c026',fillOpacity:.9}).addTo(mk).bindPopup(`<b>${esc(x.name)}</b>${badge(x)}<br>${esc(x.type)} · ${x.d.toFixed(1)} mi<br><small>${x.src}</small><br><a target="_blank" href="${dir(x)}">Directions</a>${x.web?` · <a target="_blank" href="${esc(x.web)}">Info</a>`:''}`));
+ document.getElementById('mstatus').textContent=v.length+(FILTER=='q'?' quirky':'')+' attractions within 20 mi of '+label+(xs.fails.length?' (unavailable: '+xs.fails.join(', ')+')':'')}
+locate();
+</script></body></html>
