@@ -1,40 +1,43 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Roadside Oddities</title>
+<title>Roadside Gems</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"><link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Rye&family=Roboto+Slab:wght@400;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--red:#c8102e;--teal:#1b9aaa;--cream:#fdf3dc;--brown:#3b2414;--yellow:#f6c026}
-*{box-sizing:border-box}body{margin:0;font-family:'Roboto Slab',serif;background:var(--cream);color:var(--brown);display:flex;flex-direction:column;height:100vh}
-header{background:var(--red);color:var(--yellow);text-align:center;padding:10px;border-bottom:6px dashed var(--yellow)}
-header h1{font-family:Rye,serif;margin:0;font-size:1.7em;text-shadow:2px 2px 0 var(--brown)}header small{color:#fff}
-nav{display:flex}nav button{flex:1;padding:12px;font:700 1em Rye,serif;border:0;background:var(--teal);color:#fff;cursor:pointer}
-nav button.on{background:var(--yellow);color:var(--brown)}
-section{display:none;flex:1;overflow:auto}section.on{display:flex;flex-direction:column}
-.bar{display:flex;gap:6px;padding:10px}.bar input{flex:1;padding:10px;border:3px solid var(--brown);border-radius:8px;font:inherit}
-.bar button{padding:10px 14px;background:var(--red);color:#fff;border:3px solid var(--brown);border-radius:8px;font:700 1em inherit;cursor:pointer}
-#status,#mstatus{padding:0 12px;font-style:italic}
-ul{list-style:none;margin:0;padding:10px}li{background:#fff;border:3px solid var(--brown);border-radius:10px;padding:10px;margin-bottom:10px;box-shadow:4px 4px 0 var(--teal)}
-li b{font-size:1.1em}.tag{display:inline-block;background:var(--yellow);border-radius:4px;padding:1px 6px;font-size:.8em;margin:4px 0}
-.dist{float:right;font-family:Rye,serif;color:var(--red)}a{color:var(--teal);font-weight:700}
-.filt{background:var(--brown);color:var(--cream);padding:6px 10px;text-align:center}.fb{margin:0 4px;padding:5px 12px;border-radius:20px;border:2px solid var(--yellow);background:transparent;color:var(--yellow);font:700 .9em inherit;cursor:pointer}.fb.on{background:var(--yellow);color:var(--brown)}.qb{background:#e0218a;color:#fff;border-radius:10px;padding:1px 7px;font-size:.75em;white-space:nowrap}li.q{box-shadow:4px 4px 0 #e0218a}.src{color:#8a6a4a}
-.pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid #3b2414;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:2px 2px 0 rgba(0,0,0,.3)}.pin>*{transform:rotate(45deg)}.pq{background:#e0218a}.pr{background:#f6c026}
-#sheet{position:fixed;left:0;right:0;bottom:0;max-height:75vh;overflow:auto;background:var(--cream);border-top:6px dashed var(--red);border-radius:18px 18px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.35);transform:translateY(105%);transition:transform .25s;z-index:2000;padding:14px 16px 24px}#sheet.open{transform:none}
-#sheet h2{font-family:Rye,serif;margin:4px 40px 6px 0;color:var(--red)}#sheet .x{position:sticky;top:0;float:right;font-size:1.4em;background:var(--brown);color:#fff;border:0;border-radius:50%;width:36px;height:36px;cursor:pointer}
-#sheet img{max-width:100%;max-height:220px;border:3px solid var(--brown);border-radius:8px;display:block;margin:8px 0}.row{margin:6px 0}.links{display:grid;grid-template-columns:1fr 1fr;gap:8px}.links a{background:#fff;border:2px solid var(--brown);border-radius:8px;padding:9px;text-align:center;text-decoration:none;font-size:.9em}
-#map{flex:1;min-height:300px}
+:root{--accent:#e4572e;--bg:#f6f7f9;--card:#fff;--text:#1f2328;--muted:#6b7280;--line:#e5e7eb;--quirk:#7c3aed;--r:14px;--sh:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.06)}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+header{background:var(--accent);color:#fff;padding:14px 20px;text-align:center}header h1{margin:0;font-size:1.25rem;font-weight:700;letter-spacing:-.01em}
+nav{display:flex;gap:4px;margin:14px 16px 0;padding:4px;background:#eceef1;border-radius:12px}nav button{flex:1;padding:9px;border:0;border-radius:9px;background:transparent;color:var(--muted);font:600 .95rem inherit;cursor:pointer;transition:.15s}nav button.on{background:#fff;color:var(--text);box-shadow:var(--sh)}
+.filt{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px 0;color:var(--muted);font-size:.85rem}.fb{padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--text);font:500 .85rem inherit;cursor:pointer;transition:.15s}.fb.on{background:var(--text);border-color:var(--text);color:#fff}
+section{display:none;flex:1;overflow:auto;min-height:0}section.on{display:flex;flex-direction:column}
+.bar{display:flex;gap:8px;padding:12px 16px}.bar input{flex:1;min-width:0;padding:11px 14px;border:1px solid var(--line);border-radius:12px;font:inherit;background:#fff;outline:none}.bar input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(228,87,46,.15)}
+.bar button{padding:0 16px;background:var(--accent);color:#fff;border:0;border-radius:12px;font:600 .9rem inherit;cursor:pointer}.bar button[title]{background:#fff;border:1px solid var(--line)}
+#status,#mstatus{padding:0 18px 6px;color:var(--muted);font-size:.85rem}
+ul{list-style:none;margin:0;padding:6px 16px 24px;display:flex;flex-direction:column;gap:10px}li{background:var(--card);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh);line-height:1.5}
+li b{font-size:1rem;font-weight:600}.tag{display:inline-block;background:#f1f2f4;color:var(--muted);border-radius:999px;padding:2px 10px;font-size:.75rem;font-weight:500;margin:4px 0}
+.dist{float:right;font-weight:600;color:var(--accent);font-size:.9rem}a{color:var(--accent);text-decoration:none;font-weight:500;font-size:.9rem}
+.qb{display:inline-block;background:#f3e8ff;color:var(--quirk);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:600;margin-left:6px;vertical-align:middle}li.q{border-left:4px solid var(--quirk)}.src{color:var(--muted);font-size:.75rem}
+.pin{width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,.3)}.pin>*{transform:rotate(45deg)}.pq{background:var(--quirk)}.pr{background:var(--accent);color:#fff}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;max-height:78vh;overflow:auto;background:#fff;border-radius:20px 20px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);z-index:2000;padding:10px 20px 28px}#sheet.open{transform:none}
+#sheet:before{content:'';display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 10px}
+#sheet h2{margin:6px 44px 6px 0;font-size:1.3rem;font-weight:700;letter-spacing:-.01em}#sheet h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 10px}
+#sheet .x{position:sticky;top:0;float:right;width:32px;height:32px;border:0;border-radius:50%;background:#f1f2f4;color:var(--text);font-size:1rem;cursor:pointer}
+#sheet img{width:100%;max-height:220px;object-fit:cover;border-radius:12px;display:block;margin:12px 0}#sheet p{line-height:1.55;color:#374151}.row{margin:8px 0;font-size:.92rem}.links{display:grid;grid-template-columns:1fr 1fr;gap:8px}.links a{background:#f6f7f9;border-radius:10px;padding:10px;text-align:center;color:var(--text);font-size:.85rem}.links a:hover{background:#eceef1}
+footer{padding:8px 16px;text-align:center;font-size:.7rem;color:var(--muted);background:var(--bg)}footer a{font-size:.7rem}
+#map{flex:1;min-height:300px;margin:0 16px 12px;border-radius:var(--r);box-shadow:var(--sh)}
 </style></head><body>
-<header><h1>★ Roadside Oddities ★</h1><small>Giant things, weird things &amp; worth-a-stop things within 20 miles · Data: OpenStreetMap, Wikidata, Wikipedia</small></header>
+<header><h1>Roadside Gems</h1></header>
 <nav><button id="tN" class="on" onclick="tab('N')">Nearby</button><button id="tM" onclick="tab('M')">Map</button></nav>
-<div class="filt">Show: <button class="fb on" data-f="all" onclick="setFilter('all')">All</button><button class="fb" data-f="q" onclick="setFilter('q')">🤪 Quirky only</button></div>
+<div class="filt"><button class="fb on" data-f="all" onclick="setFilter('all')">All</button><button class="fb" data-f="q" onclick="setFilter('q')">🤪 Quirky only</button></div>
 <section id="N" class="on">
  <div class="bar"><input id="place" placeholder="Or enter a town / address"><button onclick="nearPlace()">Go</button><button onclick="locate()" title="Use my location">📍</button></div>
  <div id="status"></div><ul id="list"></ul></section>
 <section id="M"><div class="bar"><input id="q" placeholder="Search anywhere…" onkeydown="if(event.key=='Enter')mapSearch()"><button onclick="mapSearch()">Search</button></div>
  <div id="mstatus"></div><div id="map"></div></section>
+<footer>Data © <a target="_blank" href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL) · <a target="_blank" href="https://www.wikidata.org">Wikidata</a> (CC0) · <a target="_blank" href="https://www.wikipedia.org">Wikipedia</a> (CC BY-SA)</footer>
 <div id="sheet" role="dialog" aria-label="Attraction details"><button class="x" onclick="closeSheet()" aria-label="Close">✕</button><div id="sheetBody"></div></div>
 <script>
 const R=32187,EPS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
