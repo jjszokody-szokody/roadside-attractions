@@ -33,6 +33,7 @@ footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom));text-align:cente
 #map{flex:1;min-height:300px;margin:0 16px 12px;border-radius:var(--r);box-shadow:var(--sh)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}@keyframes sp{to{transform:rotate(360deg)}}.note{display:block;font-size:.75rem;color:#b45309}.retry{margin-left:8px;padding:5px 12px;border:0;border-radius:999px;background:var(--accent);color:#fff;font:600 .8rem inherit;cursor:pointer}
 #inst{display:none;align-items:center;gap:10px;margin:12px 16px 0;padding:10px 12px 10px 14px;background:#fff;border-radius:12px;box-shadow:var(--sh);font-size:.85rem}#inst.on{display:flex}#inst span{flex:1}#inst button{border:0;border-radius:999px;padding:6px 12px;font:600 .8rem inherit;cursor:pointer}#instBtn{background:var(--accent);color:#fff}#instX{background:#f1f2f4;color:var(--muted)}
+.hint{padding:0 18px 8px;font-size:.78rem;color:var(--muted)}
 </style></head><body>
 <header><h1>Roadside Gems</h1></header>
 <div id="inst" role="status"><span id="instTxt"></span><button id="instBtn" hidden>Install</button><button id="instX" aria-label="Dismiss">✕</button></div>
@@ -42,14 +43,14 @@ footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom));text-align:cente
  <div class="bar"><input id="place" placeholder="Or enter a town / address"><button onclick="nearPlace()">Go</button><button onclick="locate()" title="Use my location">📍</button></div>
  <div id="status"></div><ul id="list"></ul></section>
 <section id="M"><div class="bar"><input id="q" placeholder="Search anywhere…" onkeydown="if(event.key=='Enter')mapSearch()"><button onclick="mapSearch()">Search</button></div>
- <div id="mstatus"></div><div id="map"></div></section>
+ <div id="mstatus"></div><div class="hint">👆 Tap the map to search there</div><div id="map"></div></section>
 <footer>Data © <a target="_blank" href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL) · <a target="_blank" href="https://www.wikidata.org">Wikidata</a> (CC0) · <a target="_blank" href="https://www.wikipedia.org">Wikipedia</a> (CC BY-SA)</footer>
 <div id="sheet" role="dialog" aria-label="Attraction details"><button class="x" onclick="closeSheet()" aria-label="Close">✕</button><div id="sheetBody"></div></div>
 <script>
 const R=32187,EPS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
 let map,layer;
 function tab(t){for(const x of['N','M']){document.getElementById(x).classList.toggle('on',x==t);document.getElementById('t'+x).classList.toggle('on',x==t)}
- if(t=='M'){if(!map){map=L.map('map').setView([39.8,-98.6],4);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);layer=L.layerGroup().addTo(map)}setTimeout(()=>{map.invalidateSize();mapAutoLoad()},50)}}
+ if(t=='M'){if(!map){map=L.map('map').setView([39.8,-98.6],4);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);layer=L.layerGroup().addTo(map);initTap()}setTimeout(()=>{map.invalidateSize();mapAutoLoad()},50)}}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function miles(a,b,c,d){const r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b),h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2;return 3958.8*2*Math.asin(Math.sqrt(h))}
 const QUIRK=/giant|largest|biggest|world'?s|\bbig\b|mystery|spot|wonder|oddit|museum of|dinosaur|muffler|mural|statue|twine|ball of|teapot|cowboy|bigfoot|ufo|alien|castle|carhenge|tipi|teepee|novelty|folk art|bottle|roadside/i;
@@ -57,27 +58,27 @@ function typeOf(t){if(t.artwork_type)return 'Art: '+t.artwork_type.replace(/_/g,
 function isQuirky(t,name){return !!(t.artwork_type&&/statue|sculpture|mural|installation/.test(t.artwork_type))||t.attraction=='animal'||!!t.attraction||t.building&&QUIRK.test(name||'')||QUIRK.test(name||'')||!!t['roadside']}
 function tfetch(url,opt={},ms=15000,outer){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);if(outer)outer.addEventListener('abort',()=>c.abort());
  return fetch(url,{...opt,signal:c.signal}).then(r=>{if(r.status!==200)throw Error('HTTP '+r.status);return r.json()}).catch(e=>{throw e.name=='AbortError'?Error('timed out'):e}).finally(()=>clearTimeout(t))}
-async function overpass(lat,lon){
+async function overpass(lat,lon,sig){
  const a=`(around:${R},${lat},${lon})`;
  const q=`[out:json][timeout:20];(nw["tourism"~"^(attraction|artwork|viewpoint|museum|theme_park|zoo)$"]["name"]${a};nw["historic"~"^(monument|memorial|castle|fort|ruins|ship|locomotive|aircraft|building)$"]["name"]${a};nw["attraction"]["name"]${a};nw["name"~"Giant|Largest|Biggest|World's|Dinosaur|Muffler|Mystery|Twine",i][~"^(tourism|historic|man_made|building)$"~"."]${a};);out center tags 300;`;
- const win=new AbortController(),body='data='+encodeURIComponent(q),hd={'Content-Type':'application/x-www-form-urlencoded'};
+ const win=new AbortController();if(sig)sig.addEventListener('abort',()=>win.abort());const body='data='+encodeURIComponent(q),hd={'Content-Type':'application/x-www-form-urlencoded'};
  let j;try{j=await Promise.any(EPS.map(ep=>tfetch(ep,{method:'POST',body,headers:hd},15000,win.signal)))}catch(e){throw Error('all Overpass mirrors failed')}finally{win.abort()}
  return (j.elements||[]).map(e=>{const t=e.tags||{},n=t.name||t.description;return{name:n,type:typeOf(t),lat:e.lat??e.center?.lat,lon:e.lon??e.center?.lon,quirky:isQuirky(t,n),src:'OSM',tags:t,osm:e.type+'/'+e.id,web:t.website||t['contact:website'],wp:t.wikipedia&&t.wikipedia.startsWith('en:')?t.wikipedia.slice(3):null,qid:t.wikidata}}).filter(x=>x.name&&x.lat)}
 const WD_TYPES='wd:Q14915208,wd:Q548879,wd:Q860861,wd:Q179700,wd:Q33506,wd:Q570116,wd:Q4989906,wd:Q5003624,wd:Q2319498,wd:Q1153484,wd:Q838948,wd:Q219423,wd:Q1007870',WD_QUIRK=['Q14915208','Q548879','Q860861','Q179700','Q1153484','Q219423'];
-async function wikidata(lat,lon){
+async function wikidata(lat,lon,sig){
  const q=`SELECT ?i ?iLabel ?c ?ty ?tyLabel ?art ?desc WHERE { SERVICE wikibase:around { ?i wdt:P625 ?c. bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral. bd:serviceParam wikibase:radius "32". } ?i wdt:P31 ?ty. ?i rdfs:label ?l. FILTER(LANG(?l)='en') OPTIONAL{?ty wdt:P279 ?sup} OPTIONAL{?art schema:about ?i; schema:isPartOf <https://en.wikipedia.org/>} OPTIONAL{?i schema:description ?desc FILTER(LANG(?desc)='en')} FILTER(?ty IN (${WD_TYPES}) || ?sup IN (wd:Q14915208,wd:Q548879,wd:Q860861,wd:Q179700,wd:Q33506,wd:Q570116) || REGEX(?l,"Giant|Largest|Biggest|World's|Mystery|Dinosaur|Muffler|Wonder|Twine|Big ","i")) SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } } LIMIT 300`;
- const j=await tfetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{headers:{Accept:'application/sparql-results+json'}},20000),seen={};
+ const j=await tfetch('https://query.wikidata.org/sparql?format=json&query='+encodeURIComponent(q),{headers:{Accept:'application/sparql-results+json'}},20000,sig),seen={};
  return j.results.bindings.map(b=>{const m=b.c.value.match(/Point\(([-\d.e]+) ([-\d.e]+)\)/),n=b.iLabel.value,qid=b.ty.value.split('/').pop();return{name:n,type:b.tyLabel.value,lat:+m[2],lon:+m[1],quirky:WD_QUIRK.includes(qid)||QUIRK.test(n),src:'Wikidata',qid:b.i.value.split('/').pop(),desc:b.desc?.value,wp:b.art?decodeURIComponent(b.art.value.split('/wiki/')[1]).replace(/_/g,' '):null}}).filter(x=>!/stream|river|creek|lake|mountain|cemetery/i.test(x.type)&&!/^Q\d+$/.test(x.name)&&!seen[x.name]&&(seen[x.name]=1))}
-async function wikipedia(lat,lon){const j=await tfetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=100&format=json&origin=*`,{},15000);
+async function wikipedia(lat,lon,sig){const j=await tfetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=100&format=json&origin=*`,{},15000,sig);
  return (j.query?.geosearch||[]).filter(g=>QUIRK.test(g.title)).map(g=>({name:g.title,type:'Wikipedia landmark',lat:g.lat,lon:g.lon,quirky:true,src:'Wikipedia',wp:g.title}))}
 const norm=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
 // Progressive loader: returns a state whose xs array is merged in place as each source arrives
-function attractions(lat,lon,onUpdate){const st={xs:[],fails:[],pending:3},names=['OpenStreetMap','Wikidata','Wikipedia'];
+function attractions(lat,lon,onUpdate,sig){const st={xs:[],fails:[],pending:3},names=['OpenStreetMap','Wikidata','Wikipedia'];
  const add=list=>{for(const x of list){x.d=miles(lat,lon,x.lat,x.lon);if(!(x.d<=20))continue;const n=norm(x.name);
   const dup=st.xs.find(y=>miles(y.lat,y.lon,x.lat,x.lon)<0.3&&(norm(y.name)==n||norm(y.name).includes(n)||n.includes(norm(y.name))));
   if(dup){dup.quirky=dup.quirky||x.quirky;for(const k of['web','wp','qid','desc','tags','osm'])dup[k]=dup[k]||x[k];if(!dup.src.includes(x.src))dup.src+=' + '+x.src}else st.xs.push(x)}
   st.xs.sort((a,b)=>a.d-b.d)};
- st.done=Promise.all([overpass,wikidata,wikipedia].map((f,i)=>f(lat,lon).then(add,e=>{console.warn(names[i],e);st.fails.push(names[i])}).finally(()=>{st.pending--;try{onUpdate&&onUpdate(st)}catch(e){console.error(e)}})));
+ st.done=Promise.all([overpass,wikidata,wikipedia].map((f,i)=>f(lat,lon,sig).then(l=>{if(!sig?.aborted)add(l)},e=>{if(!sig?.aborted){console.warn(names[i],e);st.fails.push(names[i])}}).finally(()=>{st.pending--;if(sig?.aborted)return;try{onUpdate&&onUpdate(st)}catch(e){console.error(e)}})));
  return st}
 function statusHTML(st,label,noun){const v=shown(st.xs),loading=st.pending>0;
  if(!loading&&st.fails.length==3)return `⚠️ Couldn't reach any data source. <button class="retry" onclick="retry()">Retry</button>`;
@@ -103,9 +104,18 @@ const pin=q=>L.divIcon({className:'',html:`<div class="pin ${q?'pq':'pr'}">${q?'
 function renderMap(){if(mk)layer.removeLayer(mk);mk=L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:45,showCoverageOnHover:false}):L.layerGroup();layer.addLayer(mk);const {xs,label}=MLAST,v=shown(xs);MARK=[];
  v.forEach(x=>{const m=L.marker([x.lat,x.lon],{icon:pin(x.quirky),title:x.name}).on('click',()=>openSheet(x));m.item=x;MARK.push(m);mk.addLayer(m)});
  document.getElementById('mstatus').innerHTML=statusHTML(MLAST.st,label,'attractions')+(v.length?' · tap a pin':'')}
-async function mapAt(lat,lon,label,fit=true){layer.clearLayers();mk=null;L.circle([lat,lon],{radius:R,color:'#c8102e',fill:false,dashArray:'6'}).addTo(layer);
- L.circleMarker([lat,lon],{radius:8,color:'#fff',weight:3,fillColor:'#1b9aaa',fillOpacity:1}).addTo(layer).bindPopup(esc(label));if(fit)map.fitBounds(L.latLng(lat,lon).toBounds(R*2));
- document.getElementById('mstatus').innerHTML='<span class="spin"></span> Loading attractions…';RETRY=()=>mapAt(lat,lon,label,false);const st=attractions(lat,lon,st=>{if(MLAST&&MLAST.st===st)renderMap();if(LAST&&LAST.st===st)renderList()});MLAST={st,xs:st.xs,label,lat,lon}}
+let MAPCTL=null,TAPT=null,REVCTL=null;
+function initTap(){map.on('click',e=>{clearTimeout(TAPT);TAPT=setTimeout(()=>tapAt(e.latlng),320)});map.on('dblclick zoomstart movestart',()=>clearTimeout(TAPT))}
+async function tapAt(ll){const lat=+ll.lat.toFixed(5),lon=+ll.lng.toFixed(5),coords=lat.toFixed(4)+', '+lon.toFixed(4),q=document.getElementById('q');MAP_LOADED=true;
+ q.value=coords;mapAt(lat,lon,coords,false).catch(mErr);map.panTo([lat,lon]);
+ if(REVCTL)REVCTL.abort();REVCTL=new AbortController();
+ try{const j=await tfetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=14&lat=${lat}&lon=${lon}`,{},8000,REVCTL.signal);const a=j.address||{};
+  const nm=[a.city||a.town||a.village||a.hamlet||a.suburb||a.county,a.state||a.country].filter(Boolean).join(', ')||j.display_name;
+  if(nm&&MLAST&&MLAST.lat===lat&&MLAST.lon===lon){q.value=nm;MLAST.label=nm;renderMap()}}catch(e){}}
+
+async function mapAt(lat,lon,label,fit=true){if(MAPCTL)MAPCTL.abort();MAPCTL=new AbortController();const sig=MAPCTL.signal;layer.clearLayers();mk=null;MARK=[];closeSheet();L.circle([lat,lon],{radius:R,color:'#e4572e',weight:2,fill:false,dashArray:'6',interactive:false}).addTo(layer);
+ L.circleMarker([lat,lon],{radius:8,color:'#fff',weight:3,fillColor:'#1b9aaa',fillOpacity:1,bubblingMouseEvents:false}).addTo(layer).bindPopup(esc(label));if(fit)map.fitBounds(L.latLng(lat,lon).toBounds(R*2));
+ document.getElementById('mstatus').innerHTML='<span class="spin"></span> Loading attractions…';RETRY=()=>mapAt(lat,lon,label,false);const st=attractions(lat,lon,st=>{if(MLAST&&MLAST.st===st)renderMap();if(LAST&&LAST.st===st)renderList()},sig);MLAST={st,xs:st.xs,label,lat,lon}}
 let MAP_LOADED=false;
 function mapAutoLoad(){if(MAP_LOADED)return;MAP_LOADED=true;
  if(LAST&&LAST.lat!=null){mapAt(LAST.lat,LAST.lon,LAST.label).catch(e=>mErr(e));return}
