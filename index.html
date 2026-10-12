@@ -34,6 +34,8 @@ footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom));text-align:cente
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}@keyframes sp{to{transform:rotate(360deg)}}.note{display:block;font-size:.75rem;color:#b45309}.retry{margin-left:8px;padding:5px 12px;border:0;border-radius:999px;background:var(--accent);color:#fff;font:600 .8rem inherit;cursor:pointer}
 #inst{display:none;align-items:center;gap:10px;margin:12px 16px 0;padding:10px 12px 10px 14px;background:#fff;border-radius:12px;box-shadow:var(--sh);font-size:.85rem}#inst.on{display:flex}#inst span{flex:1}#inst button{border:0;border-radius:999px;padding:6px 12px;font:600 .8rem inherit;cursor:pointer}#instBtn{background:var(--accent);color:#fff}#instX{background:#f1f2f4;color:var(--muted)}
 .hint{padding:0 18px 8px;font-size:.78rem;color:var(--muted)}
+.pulse{width:40px;height:40px;border-radius:50%;border:3px solid var(--accent);animation:pl .9s ease-out forwards;pointer-events:none}@keyframes pl{from{transform:scale(.2);opacity:1}to{transform:scale(1.6);opacity:0}}
+#sheet:not(.open){pointer-events:none;visibility:hidden;transition:transform .28s,visibility 0s .28s}.hint,#mstatus{pointer-events:auto}
 </style></head><body>
 <header><h1>Roadside Gems</h1></header>
 <div id="inst" role="status"><span id="instTxt"></span><button id="instBtn" hidden>Install</button><button id="instX" aria-label="Dismiss">✕</button></div>
@@ -105,9 +107,19 @@ function renderMap(){if(mk)layer.removeLayer(mk);mk=L.markerClusterGroup?L.marke
  v.forEach(x=>{const m=L.marker([x.lat,x.lon],{icon:pin(x.quirky),title:x.name}).on('click',()=>openSheet(x));m.item=x;MARK.push(m);mk.addLayer(m)});
  document.getElementById('mstatus').innerHTML=statusHTML(MLAST.st,label,'attractions')+(v.length?' · tap a pin':'')}
 let MAPCTL=null,TAPT=null,REVCTL=null;
-function initTap(){map.on('click',e=>{clearTimeout(TAPT);TAPT=setTimeout(()=>tapAt(e.latlng),320)});map.on('dblclick zoomstart movestart',()=>clearTimeout(TAPT))}
+// Robust tap detector: Leaflet treats >3px finger jitter as a drag and drops the click, so detect taps from raw pointer events (<10px, <500ms, single pointer)
+function initTap(){const el=map.getContainer();let down=null,ptrs=new Set(),lastUp=0;
+ const onUI=t=>t.closest('.leaflet-marker-icon,.leaflet-marker-cluster,.marker-cluster,.leaflet-popup,.leaflet-control,.leaflet-interactive');
+ el.addEventListener('pointerdown',e=>{ptrs.add(e.pointerId);down=ptrs.size==1&&!onUI(e.target)?{x:e.clientX,y:e.clientY,t:Date.now(),multi:false}:(down&&(down.multi=true),down)},{passive:true});
+ el.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);const d=down;if(!d||ptrs.size)return;down=null;
+  if(d.multi||Date.now()-d.t>500||Math.hypot(e.clientX-d.x,e.clientY-d.y)>10)return;
+  const now=Date.now();if(now-lastUp<320){clearTimeout(TAPT);lastUp=0;return} // double-tap = zoom
+  lastUp=now;const ll=map.mouseEventToLatLng(e);clearTimeout(TAPT);TAPT=setTimeout(()=>tapAt(ll),320)},{passive:true});
+ el.addEventListener('pointercancel',e=>{ptrs.delete(e.pointerId);down=null},{passive:true});
+ map.on('dblclick zoomstart',()=>clearTimeout(TAPT))}
+function pulse(ll){const m=L.marker(ll,{interactive:false,icon:L.divIcon({className:'',html:'<div class="pulse"></div>',iconSize:[40,40],iconAnchor:[20,20]})}).addTo(map);setTimeout(()=>map.removeLayer(m),900)}
 async function tapAt(ll){const lat=+ll.lat.toFixed(5),lon=+ll.lng.toFixed(5),coords=lat.toFixed(4)+', '+lon.toFixed(4),q=document.getElementById('q');MAP_LOADED=true;
- q.value=coords;mapAt(lat,lon,coords,false).catch(mErr);map.panTo([lat,lon]);
+ q.value=coords;pulse(ll);mapAt(lat,lon,coords,false).catch(mErr);map.panTo([lat,lon]);
  if(REVCTL)REVCTL.abort();REVCTL=new AbortController();
  try{const j=await tfetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=14&lat=${lat}&lon=${lon}`,{},8000,REVCTL.signal);const a=j.address||{};
   const nm=[a.city||a.town||a.village||a.hamlet||a.suburb||a.county,a.state||a.country].filter(Boolean).join(', ')||j.display_name;
@@ -142,7 +154,7 @@ async function openSheet(x){const t=x.tags||{},sh=document.getElementById('sheet
 function closeSheet(){document.getElementById('sheet').classList.remove('open')}
 locate();
 // PWA: service worker + install hint
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW',e)));
+if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;let rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!rl){rl=true;location.reload()}});addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(e=>console.warn('SW',e)))}
 (()=>{const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;if(standalone||localStorage.getItem('rgInstallDismissed'))return;
  const box=document.getElementById('inst'),txt=document.getElementById('instTxt'),btn=document.getElementById('instBtn');let deferred;
  document.getElementById('instX').onclick=()=>{box.classList.remove('on');localStorage.setItem('rgInstallDismissed','1')};
