@@ -36,17 +36,24 @@ footer{padding:8px 16px calc(8px + env(safe-area-inset-bottom));text-align:cente
 .hint{padding:0 18px 8px;font-size:.78rem;color:var(--muted)}
 .pulse{width:40px;height:40px;border-radius:50%;border:3px solid var(--accent);animation:pl .9s ease-out forwards;pointer-events:none}@keyframes pl{from{transform:scale(.2);opacity:1}to{transform:scale(1.6);opacity:0}}
 #sheet:not(.open){pointer-events:none;visibility:hidden;transition:transform .28s,visibility 0s .28s}.hint,#mstatus{pointer-events:auto}
+.ncard{margin:12px 16px 0;padding:12px 14px;background:#fff;border-radius:12px;box-shadow:var(--sh);display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:.9rem}.ncard select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}.ncard small{flex-basis:100%;color:var(--muted);font-size:.75rem;line-height:1.4}.sw{display:flex;align-items:center;gap:8px;cursor:pointer}.sw input{width:18px;height:18px;accent-color:var(--accent)}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,40px);opacity:0;max-width:90vw;background:#1f2328;color:#fff;padding:10px 16px;border-radius:12px;font-size:.85rem;box-shadow:var(--sh);transition:.25s;z-index:3000;pointer-events:none}#toast.on{opacity:1;transform:translate(-50%,0)}
 </style></head><body>
 <header><h1>Roadside Gems</h1></header>
 <div id="inst" role="status"><span id="instTxt"></span><button id="instBtn" hidden>Install</button><button id="instX" aria-label="Dismiss">✕</button></div>
 <nav><button id="tN" class="on" onclick="tab('N')">Nearby</button><button id="tM" onclick="tab('M')">Map</button></nav>
 <div class="filt"><button class="fb on" data-f="all" onclick="setFilter('all')">All</button><button class="fb" data-f="q" onclick="setFilter('q')">🤪 Quirky only</button></div>
 <section id="N" class="on">
+ <div class="ncard"><label class="sw"><input type="checkbox" id="nOn"><span>🔔 Notify me near stops</span></label>
+  <select id="nMode" aria-label="Which stops"><option value="all">All stops</option><option value="q">🤪 Quirky only</option></select>
+  <label class="sw" id="wlRow" hidden><input type="checkbox" id="wlOn"><span>🔆 Keep screen on while driving</span></label>
+  <small class="muted">Alerts only work while Roadside Gems is open (in the foreground or recently backgrounded). <span id="nState"></span></small></div>
  <div class="bar"><input id="place" placeholder="Or enter a town / address"><button onclick="nearPlace()">Go</button><button onclick="locate()" title="Use my location">📍</button></div>
  <div id="status"></div><ul id="list"></ul></section>
 <section id="M"><div class="bar"><input id="q" placeholder="Search anywhere…" onkeydown="if(event.key=='Enter')mapSearch()"><button onclick="mapSearch()">Search</button></div>
  <div id="mstatus"></div><div class="hint">👆 Tap the map to search there</div><div id="map"></div></section>
 <footer>Data © <a target="_blank" href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL) · <a target="_blank" href="https://www.wikidata.org">Wikidata</a> (CC0) · <a target="_blank" href="https://www.wikipedia.org">Wikipedia</a> (CC BY-SA)</footer>
+<div id="toast" role="status" aria-live="polite"></div>
 <div id="sheet" role="dialog" aria-label="Attraction details"><button class="x" onclick="closeSheet()" aria-label="Close">✕</button><div id="sheetBody"></div></div>
 <script>
 const R=32187,EPS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
@@ -152,6 +159,49 @@ async function openSheet(x){const t=x.tags||{},sh=document.getElementById('sheet
  if(x.wp){document.getElementById('wpx').innerHTML='<p class="src">Loading Wikipedia summary…</p>';try{const r=await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(x.wp.replace(/ /g,'_')));const j=await r.json();
   document.getElementById('wpx').innerHTML=(j.thumbnail?`<img src="${esc(j.thumbnail.source)}" alt="">`:'')+(j.extract?`<p>${esc(j.extract)}</p>`:'')}catch(e){document.getElementById('wpx').innerHTML=''}}}
 function closeSheet(){document.getElementById('sheet').classList.remove('open')}
+// ---- Notify-me-nearby (foreground geofence) ----
+const NOTIF={gap:120000,refetchMi:5,refetchMs:600000,dedupeMs:86400000};
+const sid=x=>x.qid||x.osm||norm(x.name)+'@'+x.lat.toFixed(3)+','+x.lon.toFixed(3);
+const isiOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform=='MacIntel'&&navigator.maxTouchPoints>1),isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function toast(m,ms=4500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),ms)}
+const ls={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const NW={watch:null,pos:null,center:null,fetchedAt:0,stops:new Map(),ctl:null,lastNote:0,timer:null,count:0};
+function notified(){const m=ls.get('rgNotified',{}),now=Date.now();for(const k in m)if(now-m[k].t>NOTIF.dedupeMs)delete m[k];return m}
+function nState(m){document.getElementById('nState').textContent=m||''}
+async function enableNotify(){
+ if(!('Notification' in window)||!('serviceWorker' in navigator)){toast(isiOS&&!isStandalone()?'On iPhone, notifications need the app installed: Share → Add to Home Screen, then open it from the home screen (iOS 16.4+).':'Notifications aren\'t supported in this browser.',7000);return false}
+ if(!navigator.geolocation){toast('Location isn\'t available on this device.');return false}
+ let p=Notification.permission;if(p=='default')p=await Notification.requestPermission();
+ if(p!=='granted'){toast(p=='denied'?'Notifications are blocked. Enable them for this site in your browser settings.':'Notification permission was not granted.',6000);return false}
+ startWatch();return true}
+function startWatch(){if(NW.watch!=null)return;nState('Watching your location…');
+ NW.watch=navigator.geolocation.watchPosition(p=>onPos(p.coords.latitude,p.coords.longitude),e=>{nState('Location unavailable ('+e.message+').')},{enableHighAccuracy:false,maximumAge:60000,timeout:30000});
+ NW.timer=setInterval(()=>{if(NW.pos)onPos(NW.pos.lat,NW.pos.lon)},60000)}
+function stopWatch(){if(NW.watch!=null)navigator.geolocation.clearWatch(NW.watch);NW.watch=null;clearInterval(NW.timer);NW.ctl&&NW.ctl.abort();nState('')}
+function onPos(lat,lon){NW.pos={lat,lon};const now=Date.now();
+ if(!NW.center||miles(NW.center.lat,NW.center.lon,lat,lon)>NOTIF.refetchMi||now-NW.fetchedAt>NOTIF.refetchMs){
+  NW.center={lat,lon};NW.fetchedAt=now;NW.ctl&&NW.ctl.abort();NW.ctl=new AbortController();
+  attractions(lat,lon,st=>{for(const x of st.xs)NW.stops.set(sid(x),x);evalStops()},NW.ctl.signal)}
+ evalStops()}
+async function evalStops(){if(!NW.pos||NW.watch==null)return;const mode=document.getElementById('nMode').value,seen=notified(),now=Date.now();
+ const hits=[...NW.stops.entries()].map(([id,x])=>({id,x,d:miles(NW.pos.lat,NW.pos.lon,x.lat,x.lon)})).filter(h=>h.d<=20&&(mode!='q'||h.x.quirky)&&!seen[h.id]).sort((a,b)=>a.d-b.d);
+ nState(`Watching · ${NW.stops.size} stops known nearby`);if(!hits.length||now-NW.lastNote<NOTIF.gap)return;
+ NW.lastNote=now;const f=hits[0],more=hits.length-1,body=`${f.x.name} · ${f.d.toFixed(1)} mi away`+(more?` and ${more} more stop${more>1?'s':''} within 20 mi`:'');
+ for(const h of hits)seen[h.id]={t:now,x:{name:h.x.name,type:h.x.type,lat:h.x.lat,lon:h.x.lon,quirky:h.x.quirky,src:h.x.src,wp:h.x.wp,qid:h.x.qid,desc:h.x.desc,web:h.x.web,osm:h.x.osm,tags:h.x.tags}};ls.set('rgNotified',seen);
+ try{const reg=await navigator.serviceWorker.ready;NW.count++;await reg.showNotification('Roadside gem nearby',{body,icon:'icons/icon-192.png',badge:'icons/icon-192.png',tag:more?'rg-batch':'rg-'+f.id,data:{url:'./?stop='+encodeURIComponent(f.id),stop:f.id}})}catch(e){toast('Could not show notification: '+e.message)}}
+function openStopById(id){const x=(ls.get('rgNotified',{})[id]||{}).x;if(!x)return;const p=NW.pos||(LAST&&{lat:LAST.lat,lon:LAST.lon});x.d=p?miles(p.lat,p.lon,x.lat,x.lon):0;openSheet(x)}
+(()=>{const on=document.getElementById('nOn'),mode=document.getElementById('nMode'),cfg=ls.get('rgNotify',{on:false,mode:'all'});mode.value=cfg.mode;
+ const save=()=>ls.set('rgNotify',{on:on.checked,mode:mode.value});
+ on.addEventListener('change',async()=>{if(on.checked){const ok=await enableNotify();if(!ok)on.checked=false}else stopWatch();save()});
+ mode.addEventListener('change',()=>{save();evalStops()});
+ if(cfg.on){if('Notification' in window&&Notification.permission=='granted'){on.checked=true;startWatch()}else{save()}}
+ if('wakeLock' in navigator){const wl=document.getElementById('wlOn');document.getElementById('wlRow').hidden=false;let lock=null;
+  const get=async()=>{try{lock=await navigator.wakeLock.request('screen');lock.addEventListener('release',()=>{lock=null})}catch(e){toast('Could not keep screen on: '+e.message);wl.checked=false}};
+  wl.addEventListener('change',()=>{if(wl.checked)get();else{lock&&lock.release();lock=null}});
+  document.addEventListener('visibilitychange',()=>{if(wl.checked&&document.visibilityState=='visible'&&!lock)get()})}
+ const q=new URLSearchParams(location.search).get('stop');if(q)setTimeout(()=>openStopById(q),300);
+ if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.stop)openStopById(e.data.stop)});
+})();
 locate();
 // PWA: service worker + install hint
 if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;let rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!rl){rl=true;location.reload()}});addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(e=>console.warn('SW',e)))}
