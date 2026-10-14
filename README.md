@@ -8,3 +8,6 @@ A clean, mobile-friendly single-page app for finding roadside attractions and od
 Live: https://jjszokody-szokody.github.io/roadside-attractions/
 
 Data: OpenStreetMap (Overpass, Nominatim; ODbL), Wikidata (CC0), Wikipedia (CC BY-SA). No API keys required.
+
+## Affiliate disclosure
+Some tour and hotel links in the detail sheet (Viator, GetYourGuide, Booking.com, Expedia) are affiliate links. We may earn a commission when you book through them, at no extra cost to you. All affiliate IDs live in `affiliate-config.js`.
